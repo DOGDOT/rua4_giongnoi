@@ -36,7 +36,7 @@ setup(
     zip_safe=True,
     maintainer='Phạm Thành Đông',
     maintainer_email='23020735@vnu.edu.vn',
-    description='Phân vùng bản đồ Occupancy Grid, Gắn nhãn ngữ nghĩa và Điều hướng TurtleBot 4 bằng giọng nói (ROS 2 Humble)',
+    description='Phân vùng bản đồ Occupancy Grid, Gắn nhãn ngữ nghĩa và Điều hướng TurtleBot 4 bằng giọng nói với GUI (ROS 2 Humble)',
     license='Apache-2.0',
     tests_require=['pytest'],
     entry_points={
@@ -44,6 +44,7 @@ setup(
             'map_segmenter = rua4_giongnoi.map_segmentation:main',
             'speech_recognition_node = rua4_giongnoi.speech_recognition_node:main',
             'voice_navigation_node = rua4_giongnoi.voice_navigation_node:main',
+            'voice_control_gui = rua4_giongnoi.voice_control_gui:main',
             'semantic_map_viewer = rua4_giongnoi.semantic_map_viewer:main',
         ],
     },

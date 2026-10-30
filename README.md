@@ -31,6 +31,7 @@ rua4_giongnoi/
 │   ├── map_segmentation.py              # Phân vùng bản đồ .pgm bằng OpenCV & xuất YAML/JSON + ảnh PNG
 │   ├── speech_recognition_node.py       # Node nhận dạng giọng nói (Whisper / Vosk / Interactive CLI)
 │   ├── voice_navigation_node.py         # Node phân tích câu lệnh NLU, lập lộ trình đa điểm & gửi Goal Nav2
+│   ├── voice_control_gui.py             # Giao diện Đồ họa (GUI) thao tác giọng nói & bản đồ thời gian thực
 │   └── semantic_map_viewer.py           # Hiển thị cửa sổ bản đồ phân vùng ngữ nghĩa bằng OpenCV
 ├── launch/                              # Các file launch khởi chạy hệ thống độc lập
 │   ├── sim.launch.py                    # Khởi chạy Gazebo + Spawn TurtleBot 4
@@ -55,6 +56,7 @@ rua4_giongnoi/
 └── results/                             # Kết quả thực nghiệm & kiểm thử tự động
     ├── map_segmentation_pipeline.png    # Chuỗi 4 bước xử lý phân vùng bản đồ bằng OpenCV
     ├── voice_route_demo.png             # Minh họa lộ trình đa điểm (D -> A -> C -> B) trên bản đồ phân vùng
+    ├── voice_gui_preview.png            # Ảnh chụp Giao diện Đồ họa Điều khiển Giọng nói (GUI)
     └── voice_navigation_test_report.txt # Báo cáo kết quả kiểm thử tự động 7/7 kịch bản câu lệnh
 ```
 
@@ -134,7 +136,10 @@ source /opt/ros/humble/setup.bash && source install/setup.bash
 
 ros2 launch rua4_giongnoi lab7_voice_nav.launch.py
 ```
-*(Hoặc chạy tách riêng `ros2 run rua4_giongnoi voice_navigation_node` ở Terminal 3 và `ros2 run rua4_giongnoi speech_recognition_node` ở Terminal 4).*
+- Cửa sổ **Giao diện Đồ họa Điều khiển Giọng nói (`voice_control_gui`)** sẽ mở lên gồm:
+  - **Cột Trái**: Bản đồ phân vùng toàn phần 4 khu vực (`A`, `B`, `C`, `D`), vị trí robot thời gian thực và mũi tên lộ trình dự kiến (có thể **click chuột trực tiếp vào từng khu vực trên bản đồ** để điều hướng).
+  - **Cột Phải**: Nút thu âm Microphone **`[MIC: THU ÂM GIỌNG NÓI]`** (click chuột hoặc nhấn phím `Space`), 4 nút chọn nhanh Khu vực `A/B/C/D`, ô nhập câu lệnh tùy chỉnh, 6 nút câu lệnh giọng nói mẫu (click chuột hoặc nhấn phím `1`–`6`) và nút **`[DỪNG / HỦY]`**.
+- *(Hoặc chạy riêng giao diện GUI bằng lệnh: `ros2 run rua4_giongnoi voice_control_gui`).*
 
 ### Bước 4 – Kịch bản Thử nghiệm & Quay Video Demo
 Tại cửa sổ Terminal của `speech_recognition_node`, bạn có thể **nhấn `Enter` để nói trực tiếp vào Microphone**, hoặc **nhấn phím `1` – `6`** (hoặc phát qua topic `/voice_command`) để kiểm chứng đầy đủ các yêu cầu:
