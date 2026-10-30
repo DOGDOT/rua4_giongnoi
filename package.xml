@@ -1,0 +1,37 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>rua4_giongnoi</name>
+  <version>1.0.0</version>
+  <description>Package ROS 2 Humble độc lập cho Bài thực hành 7: Phân vùng bản đồ Occupancy Grid (OpenCV Watershed/Voronoi), Gắn nhãn ngữ nghĩa, Nhận dạng giọng nói (Whisper/Vosk) và Điều hướng tự hành đa điểm bằng giọng nói trên TurtleBot 4 (Nav2).</description>
+  <maintainer email="23020735@vnu.edu.vn">Phạm Thành Đông</maintainer>
+  <license>Apache-2.0</license>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>visualization_msgs</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>nav2_simple_commander</exec_depend>
+  <exec_depend>turtlebot4_ignition_bringup</exec_depend>
+  <exec_depend>turtlebot4_navigation</exec_depend>
+  <exec_depend>turtlebot4_description</exec_depend>
+  <exec_depend>irobot_create_common_bringup</exec_depend>
+  <exec_depend>irobot_create_ignition_bringup</exec_depend>
+  <exec_depend>irobot_create_control</exec_depend>
+  <exec_depend>irobot_create_nodes</exec_depend>
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>ros_ign_gazebo</exec_depend>
+  <exec_depend>rviz2</exec_depend>
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

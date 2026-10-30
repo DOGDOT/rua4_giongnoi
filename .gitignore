@@ -1,0 +1,18 @@
+# Python cache & build artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+build/
+install/
+log/
+*.egg-info/
+
+# Không đẩy báo cáo lên GitHub theo yêu cầu
+*.tex
+*.pdf
+*.aux
+*.log
+*.out
+*.toc
+baocao/
+bao_cao*
