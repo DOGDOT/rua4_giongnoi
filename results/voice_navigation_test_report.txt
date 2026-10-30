@@ -5,43 +5,43 @@
   • Câu lệnh giọng nói : "Đi đến khu vực A."
   • Vị trí Robot hiện tại: (0.0, 0.0)
   • Kết quả phân tích  : valid=True | type=single_goal | route=['A']
-  • Thông báo hệ thống : Điều hướng trực tiếp đến Khu vực A - Phòng học tại tọa độ (x=2.0, y=0.0).
+  • Thông báo hệ thống : Điều hướng trực tiếp đến Khu vực A - Phòng học tại tọa độ (x=6.0, y=2.0).
 ------------------------------------------------------------------------------------
 [PASS] Test 2 - Câu lệnh đơn điểm theo tên ngữ nghĩa tiếng Việt
   • Câu lệnh giọng nói : "Đi đến phòng thí nghiệm."
   • Vị trí Robot hiện tại: (0.0, 0.0)
   • Kết quả phân tích  : valid=True | type=single_goal | route=['B']
-  • Thông báo hệ thống : Điều hướng trực tiếp đến Khu vực B - Phòng thí nghiệm tại tọa độ (x=3.5, y=2.0).
+  • Thông báo hệ thống : Điều hướng trực tiếp đến Khu vực B - Phòng thí nghiệm tại tọa độ (x=2.0, y=14.0).
 ------------------------------------------------------------------------------------
 [PASS] Test 3 - Câu lệnh Từ A đến B khi robot đang ở vị trí khác (Trạm D: 0.0, 0.0)
   • Câu lệnh giọng nói : "Di chuyển từ khu vực A đến khu vực B."
   • Vị trí Robot hiện tại: (0.0, 0.0)
   • Kết quả phân tích  : valid=True | type=start_to_goal | route=['A', 'B']
-  • Thông báo hệ thống : Robot hiện ở (0.0, 0.0), cách điểm xuất phát Khu vực A - Phòng học 2.00m. Điều hướng tuần tự qua điểm xuất phát trước: A (Phòng học) -> B (Phòng thí nghiệm).
+  • Thông báo hệ thống : Robot hiện ở (0.0, 0.0), cách điểm xuất phát Khu vực A - Phòng học 6.32m. Điều hướng tuần tự qua điểm xuất phát trước: A (Phòng học) -> B (Phòng thí nghiệm).
 ------------------------------------------------------------------------------------
-[PASS] Test 4 - Câu lệnh Từ A đến B khi robot đã đứng sẵn trong khu vực A (2.0, 0.0)
+[PASS] Test 4 - Câu lệnh Từ A đến B khi robot đã đứng sẵn trong khu vực A (6.0, 2.0)
   • Câu lệnh giọng nói : "Di chuyển từ khu vực A đến khu vực B."
-  • Vị trí Robot hiện tại: (2.0, 0.0)
+  • Vị trí Robot hiện tại: (6.0, 2.0)
   • Kết quả phân tích  : valid=True | type=start_to_goal | route=['B']
-  • Thông báo hệ thống : Robot đang ở sẵn trong Khu vực A - Phòng học (d=0.00m <= 1.15m). Bắt đầu lộ trình: B (Phòng thí nghiệm).
+  • Thông báo hệ thống : Robot đang ở sẵn trong Khu vực A - Phòng học (d=0.00m <= 2.50m). Bắt đầu lộ trình: B (Phòng thí nghiệm).
 ------------------------------------------------------------------------------------
 [PASS] Test 5 - Câu lệnh mở rộng đa điểm (Từ phòng A qua hành lang C rồi đến phòng B)
   • Câu lệnh giọng nói : "Đi từ phòng A qua hành lang C rồi đến phòng B."
   • Vị trí Robot hiện tại: (0.0, 0.0)
   • Kết quả phân tích  : valid=True | type=multi_waypoint | route=['A', 'C', 'B']
-  • Thông báo hệ thống : Robot hiện ở (0.0, 0.0), cách điểm xuất phát Khu vực A - Phòng học 2.00m. Điều hướng tuần tự qua điểm xuất phát trước: A (Phòng học) -> C (Hành lang) -> B (Phòng thí nghiệm).
+  • Thông báo hệ thống : Robot hiện ở (0.0, 0.0), cách điểm xuất phát Khu vực A - Phòng học 6.32m. Điều hướng tuần tự qua điểm xuất phát trước: A (Phòng học) -> C (Hành lang) -> B (Phòng thí nghiệm).
 ------------------------------------------------------------------------------------
 [PASS] Test 6 - Xử lý khu vực không tồn tại (Khu vực Z)
   • Câu lệnh giọng nói : "Đi đến khu vực Z."
   • Vị trí Robot hiện tại: (0.0, 0.0)
   • Kết quả phân tích  : valid=False | type=invalid_region | route=[]
-  • Thông báo hệ thống : [LỖI KHU VỰC KHÔNG TỒN TẠI] Không tìm thấy 'Khu vực Z' trên bản đồ! Các khu vực hợp lệ: A (Phòng học), B (Phòng thí nghiệm), C (Hành lang), D (Trạm xuất phát).
+  • Thông báo hệ thống : [LỖI KHU VỰC KHÔNG TỒN TẠI] Không tìm thấy 'Khu vực Z' trên bản đồ! Các khu vực hợp lệ: A (Phòng học), B (Phòng thí nghiệm), C (Hành lang), D (Khu kho thực hành).
 ------------------------------------------------------------------------------------
 [PASS] Test 7 - Xử lý tên phòng không tồn tại (Phòng giám đốc)
   • Câu lệnh giọng nói : "Đi đến phòng giám đốc."
   • Vị trí Robot hiện tại: (0.0, 0.0)
   • Kết quả phân tích  : valid=False | type=invalid_region | route=[]
-  • Thông báo hệ thống : [LỖI KHU VỰC KHÔNG TỒN TẠI] Không tìm thấy 'phong giam', 'phong giam doc' trên bản đồ! Các khu vực hợp lệ: A (Phòng học), B (Phòng thí nghiệm), C (Hành lang), D (Trạm xuất phát).
+  • Thông báo hệ thống : [LỖI KHU VỰC KHÔNG TỒN TẠI] Không tìm thấy 'phong giam', 'phong giam doc' trên bản đồ! Các khu vực hợp lệ: A (Phòng học), B (Phòng thí nghiệm), C (Hành lang), D (Khu kho thực hành).
 ------------------------------------------------------------------------------------
  TỔNG KẾT: 7/7 KỊCH BẢN ĐẠT YÊU CẦU (100% PASS)
 ====================================================================================

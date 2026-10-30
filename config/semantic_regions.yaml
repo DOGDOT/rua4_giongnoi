@@ -1,6 +1,6 @@
 # ==============================================================================
-# CẤU HÌNH CÁC KHU VỰC NGỮ NGHĨA TRÊN BẢN ĐỒ (SEMANTIC MAP REGIONS) - BÀI 07
-# Package: rua4_giongnoi | Hệ tọa độ: map
+# CẤU HÌNH PHÂN VÙNG TOÀN BỘ BẢN ĐỒ (FULL-MAP SEMANTIC REGIONS) - BÀI 07
+# Package: rua4_giongnoi | Hệ tọa độ: map (100% Free Space Coverage)
 # Tự động sinh từ: map_segmentation.py (OpenCV Occupancy Grid Segmentation)
 # ==============================================================================
 
@@ -11,6 +11,7 @@ map_metadata:
   height_px: 1005
   resolution_m_per_px: 0.05
   origin_world: [-15.1, -25.0, 0.0]
+  total_free_area_m2: 1185.64
   segmented_image: "maps/map_segmented.png"
 
 regions:
@@ -19,34 +20,34 @@ regions:
     name: "Khu vực A - Phòng học"
     semantic_label: "Phòng học"
     numeric_label: 1
-    radius_m: 1.15
-    area_pixels: 13121
-    area_m2: 32.8
+    radius_m: 2.5
+    area_pixels: 66420
+    area_m2: 166.05
     color_rgb: [66, 133, 244]
     pixel_centroid:
-      u: 342
-      v: 504
+      u: 422
+      v: 464
     goal_world:
-      x: 2.0
-      y: 0.0
+      x: 6.0
+      y: 2.0
       yaw: 0.0
-    aliases: ["a", "khu a", "khu vuc a", "khu vực a", " vùng a", "vung a", "phong a", "phòng a", "phong hoc", "phòng học", "classroom", "area a", "zone a"]
+    aliases: ["a", "khu a", "khu vuc a", "khu vực a", "vung a", "vùng a", "phong a", "phòng a", "phong hoc", "phòng học", "classroom", "area a", "zone a"]
 
   - id: "B"
     code: "khu_vuc_b"
     name: "Khu vực B - Phòng thí nghiệm"
     semantic_label: "Phòng thí nghiệm"
     numeric_label: 2
-    radius_m: 1.25
-    area_pixels: 22978
-    area_m2: 57.45
+    radius_m: 2.5
+    area_pixels: 146734
+    area_m2: 366.84
     color_rgb: [52, 168, 83]
     pixel_centroid:
-      u: 372
-      v: 464
+      u: 342
+      v: 224
     goal_world:
-      x: 3.5
-      y: 2.0
+      x: 2.0
+      y: 14.0
       yaw: 1.57
     aliases: ["b", "khu b", "khu vuc b", "khu vực b", "vung b", "vùng b", "phong b", "phòng b", "phong thi nghiem", "phòng thí nghiệm", "phong lab", "phòng lab", "lab", "laboratory", "area b", "zone b"]
 
@@ -55,34 +56,34 @@ regions:
     name: "Khu vực C - Hành lang"
     semantic_label: "Hành lang"
     numeric_label: 3
-    radius_m: 1.2
-    area_pixels: 15717
-    area_m2: 39.29
+    radius_m: 2.5
+    area_pixels: 88826
+    area_m2: 222.07
     color_rgb: [251, 188, 5]
     pixel_centroid:
-      u: 322
-      v: 454
+      u: 232
+      v: 474
     goal_world:
-      x: 1.0
-      y: 2.5
+      x: -3.5
+      y: 1.5
       yaw: 3.14
     aliases: ["c", "khu c", "khu vuc c", "khu vực c", "vung c", "vùng c", "phong c", "phòng c", "hanh lang", "hành lang", "hanh lang c", "hành lang c", "corridor", "hallway", "area c", "zone c"]
 
   - id: "D"
     code: "khu_vuc_d"
-    name: "Khu vực D - Trạm xuất phát"
-    semantic_label: "Trạm xuất phát"
+    name: "Khu vực D - Khu kho thực hành"
+    semantic_label: "Khu kho thực hành"
     numeric_label: 4
-    radius_m: 1.15
-    area_pixels: 20203
-    area_m2: 50.51
+    radius_m: 2.5
+    area_pixels: 172271
+    area_m2: 430.68
     color_rgb: [234, 67, 53]
     pixel_centroid:
-      u: 302
-      v: 504
+      u: 342
+      v: 664
     goal_world:
-      x: 0.0
-      y: 0.0
-      yaw: 0.0
-    aliases: ["d", "khu d", "khu vuc d", "khu vực d", "vung d", "vùng d", "phong d", "phòng d", "tram xuat phat", "trạm xuất phát", "diem xuat phat", "điểm xuất phát", "tram sac", "trạm sạc", "kho hang", "kho hàng", "home", "start", "origin", "area d", "zone d"]
+      x: 2.0
+      y: -8.0
+      yaw: -1.57
+    aliases: ["d", "khu d", "khu vuc d", "khu vực d", "vung d", "vùng d", "phong d", "phòng d", "khu kho", "kho hang", "kho hàng", "phong thuc hanh", "phòng thực hành", "tram xuat phat", "trạm xuất phát", "diem xuat phat", "điểm xuất phát", "home", "start", "area d", "zone d"]
 

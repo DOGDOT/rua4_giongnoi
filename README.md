@@ -65,12 +65,12 @@ rua4_giongnoi/
 Công thức chuyển đổi từ tọa độ pixel $(u, v)$ trên ảnh `map.pgm` ($W = 604, H = 1005, r = 0.05\,\text{m/px}, x_0 = -15.1, y_0 = -25.0$) sang tọa độ thực $(x, y)$ trong frame `map` của ROS 2:
 $$x = x_0 + u \cdot r, \qquad y = y_0 + (H - 1 - v) \cdot r$$
 
-| Mã vùng | Tên Khu vực Ngữ nghĩa | Tọa độ Pixel $(u, v)$ | Tọa độ Đích ROS `map` $(x, y, \text{yaw})$ | Bán kính vùng | Các cụm từ nhận diện giọng nói (Aliases) |
+| Mã vùng | Tên Khu vực Ngữ nghĩa | Tọa độ Pixel $(u, v)$ | Tọa độ Đích ROS `map` $(x, y, \text{yaw})$ | Diện tích vùng | Các cụm từ nhận diện giọng nói (Aliases) |
 | :---: | :--- | :---: | :---: | :---: | :--- |
-| **`A`** | **Khu vực A – Phòng học** | `(342, 504)` | `(2.0, 0.0, 0.00 rad)` | `1.15 m` | *"khu vực A"*, *"phòng A"*, *"phòng học"*, *"classroom"* |
-| **`B`** | **Khu vực B – Phòng thí nghiệm** | `(372, 464)` | `(3.5, 2.0, 1.57 rad)` | `1.25 m` | *"khu vực B"*, *"phòng B"*, *"phòng thí nghiệm"*, *"phòng lab"* |
-| **`C`** | **Khu vực C – Hành lang** | `(322, 454)` | `(1.0, 2.5, 3.14 rad)` | `1.20 m` | *"khu vực C"*, *"hành lang"*, *"hành lang C"*, *"corridor"* |
-| **`D`** | **Khu vực D – Trạm xuất phát** | `(302, 504)` | `(0.0, 0.0, 0.00 rad)` | `1.15 m` | *"khu vực D"*, *"trạm xuất phát"*, *"điểm xuất phát"*, *"trạm sạc"* |
+| **`A`** | **Khu vực A – Phòng học** | `(422, 464)` | `(6.0, 2.0, 0.00 rad)` | `166.05 m²` | *"khu vực A"*, *"phòng A"*, *"phòng học"*, *"classroom"* |
+| **`B`** | **Khu vực B – Phòng thí nghiệm** | `(342, 224)` | `(2.0, 14.0, 1.57 rad)` | `366.84 m²` | *"khu vực B"*, *"phòng B"*, *"phòng thí nghiệm"*, *"phòng lab"* |
+| **`C`** | **Khu vực C – Hành lang** | `(232, 474)` | `(-3.5, 1.5, 3.14 rad)` | `222.07 m²` | *"khu vực C"*, *"hành lang"*, *"hành lang C"*, *"corridor"* |
+| **`D`** | **Khu vực D – Khu kho thực hành** | `(342, 664)` | `(2.0, -8.0, -1.57 rad)` | `430.68 m²` | *"khu vực D"*, *"trạm xuất phát"*, *"điểm xuất phát"*, *"trạm sạc"* |
 
 ---
 
@@ -141,10 +141,10 @@ Tại cửa sổ Terminal của `speech_recognition_node`, bạn có thể **nh�
 
 1. **Câu lệnh 1 (Đơn điểm theo mã vùng)**:
    - Nói / Chọn `[1]`: **`"Đi đến khu vực A."`**
-   - $\rightarrow$ Robot xác định đích **Khu vực A – Phòng học** `(2.0, 0.0)` và tự động di chuyển tránh vật cản tới A.
+   - $\rightarrow$ Robot xác định đích **Khu vực A – Phòng học** `(6.0, 2.0)` và tự động di chuyển tránh vật cản tới A.
 2. **Câu lệnh 2 (Đơn điểm theo tên ngữ nghĩa)**:
    - Nói / Chọn `[2]`: **`"Đi đến phòng thí nghiệm."`**
-   - $\rightarrow$ Robot ánh xạ *"phòng thí nghiệm"* sang **Khu vực B** `(3.5, 2.0)` và điều hướng tới B.
+   - $\rightarrow$ Robot ánh xạ *"phòng thí nghiệm"* sang **Khu vực B** `(2.0, 14.0)` và điều hướng tới B.
 3. **Câu lệnh 3 (Đi từ A đến B khi robot đang ở vị trí khác)**:
    - Nói / Chọn `[3]`: **`"Di chuyển từ khu vực A đến khu vực B."`**
    - $\rightarrow$ Hệ thống phát hiện robot chưa đứng ở A nên tự động lập lộ trình **qua A trước rồi mới đến B** (`A → B`).

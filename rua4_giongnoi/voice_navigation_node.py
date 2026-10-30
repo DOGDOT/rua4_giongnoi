@@ -582,9 +582,9 @@ def run_self_test(report_out_path: Optional[str] = None) -> int:
             "expect_waypoints": ["A", "B"],
         },
         {
-            "name": "Test 4 - Câu lệnh Từ A đến B khi robot đã đứng sẵn trong khu vực A (2.0, 0.0)",
+            "name": "Test 4 - Câu lệnh Từ A đến B khi robot đã đứng sẵn trong khu vực A (6.0, 2.0)",
             "cmd": "Di chuyển từ khu vực A đến khu vực B.",
-            "robot_xy": (2.0, 0.0),
+            "robot_xy": (6.0, 2.0),
             "expect_valid": True,
             "expect_waypoints": ["B"],
         },
