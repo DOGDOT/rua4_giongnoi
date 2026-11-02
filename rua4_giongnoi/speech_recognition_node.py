@@ -4,14 +4,10 @@ Node Nhận dạng Giọng nói Đa tầng (Multi-Backend Speech Recognition Nod
 Package: rua4_giongnoi (ROS 2 Humble)
 
 Chức năng:
-  - Thu nhận giọng nói tiếng Việt / tiếng Anh từ Microphone với cơ chế tự động dò tìm 6 tầng:
-      1. `parecord` (PulseAudio / PipeWire - dùng chung nguồn âm thanh Card 2 với Messenger / GNOME Settings,
-         hỗ trợ gọi trực tiếp trong container hoặc xuyên container qua `distrobox-host-exec`).
-      2. `arecord -D pulse` / `arecord -D pipewire` / `arecord -D default`.
-      3. Tự động quét `arecord -l` để chọn đúng Card thu âm phần cứng (`plughw:2,0` - Ryzen HD Audio ALC257 Analog,
-         bỏ qua Card 0/1 HDMI không có mic).
-      4. `ffmpeg -f pulse -i default`.
-      5. Thư viện `sounddevice` (tự động chọn thiết bị có `max_input_channels > 0`).
+  - Tự động cân chỉnh Gain phần cứng của Card 2 (Realtek ALC257 Analog: tắt Mic Boost +20dB gây
+    vỡ tiếng/nhiễu trắng 100%, đưa Capture về mức sạch ~45/63) trước khi thu âm.
+  - Lọc thông cao (High-Pass Filter 80Hz khử tiếng quạt laptop) & Chuẩn hóa biên độ giọng nói (Auto-Normalize)
+    về ngưỡng tối ưu ~80% giúp Google Speech-to-Text / Whisper / Vosk nhận diện tiếng Việt chính xác.
   - Hỗ trợ chuyển đổi giọng nói thành văn bản (Speech-to-Text) bằng:
       1. OpenAI Whisper (`faster-whisper` hoặc `openai-whisper`).
       2. Vosk Offline Speech Recognition (`vosk`).
@@ -56,7 +52,7 @@ SAMPLE_VOICE_COMMANDS: List[str] = [
 
 
 class SpeechEngine:
-    """Bộ thu âm Microphone đa tầng (Card 2 / PulseAudio / PipeWire) & nhận dạng giọng nói tiếng Việt."""
+    """Bộ thu âm Microphone đa tầng (Card 2 ALC257 / PulseAudio) kèm lọc nhiễu & chuẩn hóa âm lượng."""
 
     def __init__(self, preferred_engine: str = "auto", whisper_model_size: str = "base",
                  vosk_model_path: Optional[str] = None, language: str = "vi") -> None:
@@ -145,6 +141,31 @@ class SpeechEngine:
             candidates.append(["distrobox-host-exec"] + cmd_args)
         return candidates
 
+    def _calibrate_card2_mixer(self) -> None:
+        """
+        Tự động cân chỉnh ALSA Mixer trên Card 2 (Realtek ALC257):
+        - Tắt Internal Mic Boost (0dB) để tránh hiện tượng khuếch đại quá mức (+50dB) gây bão hòa nhiễu trắng 100%.
+        - Đặt Capture ở mức 48/63 (+18.75dB) để giọng nói thu vào trong trẻo, không bị méo (clipping = 0%).
+        """
+        env = self._get_audio_env()
+        mixer_cmds = [
+            ["pactl", "set-source-mute", "@DEFAULT_SOURCE@", "0"],
+            ["pactl", "set-source-volume", "@DEFAULT_SOURCE@", "24%"],
+            ["amixer", "-c", "2", "sset", "Internal Mic Boost", "0"],
+            ["amixer", "-c", "2", "sset", "Mic Boost", "0"],
+            ["amixer", "-c", "2", "sset", "Capture", "48", "cap"],
+        ]
+        for mcmd in mixer_cmds:
+            for full_cmd in self._wrap_cmd(mcmd):
+                try:
+                    subprocess.run(
+                        full_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                        timeout=1.2, env=env
+                    )
+                    break
+                except Exception:
+                    continue
+
     def _detect_alsa_capture_devices(self) -> List[str]:
         """Quét `arecord -l` để ưu tiên Card 2 (`plughw:2,0` - ALC257 Analog) và các Card thu âm thực tế."""
         devices: List[str] = ["plughw:2,0"]
@@ -166,13 +187,49 @@ class SpeechEngine:
         return devices
 
     @staticmethod
-    def _compute_pcm_peak_percent(raw_pcm: bytes) -> float:
-        if len(raw_pcm) < 2:
-            return 0.0
+    def _process_and_normalize_pcm(raw_pcm: bytes, sample_rate: int = 16000) -> Tuple[bytes, float]:
+        """
+        Lọc nhiễu tần số thấp (High-pass ~85Hz khử tiếng ù quạt máy tính + khử DC offset)
+        và tự động chuẩn hóa biên độ giọng nói (Auto-Gain Normalization) giúp nhận diện rõ câu lệnh.
+        Trả về (processed_pcm_bytes, raw_peak_percent).
+        """
+        if len(raw_pcm) < 4:
+            return raw_pcm, 0.0
         count = len(raw_pcm) // 2
-        samples = struct.unpack(f"<{count}h", raw_pcm[:count * 2])
-        peak = max((abs(s) for s in samples), default=0)
-        return round(min(100.0, (peak / 32768.0) * 100.0), 1)
+        samples = list(struct.unpack(f"<{count}h", raw_pcm[:count * 2]))
+
+        # 1. Bộ lọc thông cao bậc 1 (1st-order High-Pass Filter fc ~ 85Hz tại fs=16000Hz -> alpha = 0.967)
+        alpha = 0.967
+        filtered: List[float] = [0.0] * count
+        prev_x = float(samples[0])
+        prev_y = 0.0
+        for i, x_val in enumerate(samples):
+            xf = float(x_val)
+            yf = alpha * (prev_y + xf - prev_x)
+            filtered[i] = yf
+            prev_x = xf
+            prev_y = yf
+
+        # Bỏ 0.08 giây đầu tiên (tránh tiếng "bụp" khi vừa mở cổng âm thanh)
+        skip_n = min(count // 10, int(0.08 * sample_rate))
+        for i in range(skip_n):
+            filtered[i] = 0.0
+
+        raw_peak = max((abs(v) for v in filtered), default=0.0)
+        raw_peak_pct = round(min(100.0, (raw_peak / 32768.0) * 100.0), 1)
+
+        # 2. Tự động chuẩn hóa biên độ (Auto-Normalize) về ngưỡng 24000 (~73% Full-Scale)
+        if raw_peak > 150.0:
+            gain = min(10.0, 24000.0 / raw_peak)
+        else:
+            gain = 1.0
+
+        out_samples = [
+            max(-32767, min(32767, int(round(v * gain))))
+            for v in filtered
+        ]
+        processed_bytes = struct.pack(f"<{count}h", *out_samples)
+        return processed_bytes, raw_peak_pct
 
     @staticmethod
     def _save_pcm_to_wav(wav_path: str, raw_pcm: bytes, sample_rate: int = 16000) -> bool:
@@ -187,12 +244,7 @@ class SpeechEngine:
 
     def record_microphone_wav(self, duration_sec: float = 4.0, sample_rate: int = 16000) -> Optional[str]:
         """
-        Thu âm giọng nói từ Microphone ra file WAV 16kHz 16-bit Mono.
-        Tự động thử tuần tự qua:
-          1. `parecord` (PulseAudio/PipeWire - nguồn mặc định Card 2 giống Messenger)
-          2. `arecord -D pulse` / `arecord -D default`
-          3. `arecord -D plughw:2,0` (trực tiếp Card 2 ALC257 Analog)
-          4. `sounddevice`
+        Thu âm giọng nói từ Microphone ra file WAV 16kHz 16-bit Mono đã lọc nhiễu & chuẩn hóa âm lượng.
         """
         tmp_wav = os.path.join(tempfile.gettempdir(), "rua4_voice_cmd.wav")
         try:
@@ -201,33 +253,36 @@ class SpeechEngine:
         except Exception:
             pass
 
+        # Cân chỉnh Gain Card 2 trước khi thu để không bị bão hòa nhiễu trắng (Clipping)
+        self._calibrate_card2_mixer()
+
         num_bytes = int(sample_rate * duration_sec * 2)
         dur_int = max(1, int(round(duration_sec)))
         env = self._get_audio_env()
 
         raw_stream_cmds: List[Tuple[str, List[str]]] = []
 
-        # Tầng 1: PulseAudio / PipeWire `parecord --raw` (dùng chung nguồn Card 2 với Messenger & GNOME Settings)
+        # Tầng 1: ALSA trực tiếp vào Card 2 (`plughw:2,0` - ALC257 Analog) với Gain sạch đã cân chỉnh
+        for hw_dev in self._detect_alsa_capture_devices():
+            for cmd in self._wrap_cmd([
+                "arecord", "-q", "-D", hw_dev, "-t", "raw", "-f", "S16_LE",
+                "-r", str(sample_rate), "-c", "1", "-d", str(dur_int)
+            ]):
+                raw_stream_cmds.append((f"Card 2 ALSA ({hw_dev})", cmd))
+
+        # Tầng 2: PulseAudio / PipeWire `parecord --raw`
         for cmd in self._wrap_cmd([
             "parecord", "--raw", "--channels=1", f"--rate={sample_rate}", "--format=s16le"
         ]):
             raw_stream_cmds.append(("parecord (Card 2 PulseAudio)", cmd))
 
-        # Tầng 2: ALSA qua plugin `pulse` hoặc `default`
+        # Tầng 3: ALSA qua plugin `pulse` hoặc `default`
         for dev_name in ("pulse", "pipewire", "default"):
             for cmd in self._wrap_cmd([
                 "arecord", "-q", "-D", dev_name, "-t", "raw", "-f", "S16_LE",
                 "-r", str(sample_rate), "-c", "1", "-d", str(dur_int)
             ]):
                 raw_stream_cmds.append((f"arecord -D {dev_name}", cmd))
-
-        # Tầng 3: ALSA trực tiếp vào Card 2 (`plughw:2,0` - ALC257 Analog)
-        for hw_dev in self._detect_alsa_capture_devices():
-            for cmd in self._wrap_cmd([
-                "arecord", "-q", "-D", hw_dev, "-t", "raw", "-f", "S16_LE",
-                "-r", str(sample_rate), "-c", "1", "-d", str(dur_int)
-            ]):
-                raw_stream_cmds.append((f"arecord -D {hw_dev}", cmd))
 
         fallback_zero_pcm: Optional[Tuple[str, bytes]] = None
 
@@ -247,46 +302,23 @@ class SpeechEngine:
                     proc.kill()
 
                 if len(raw_pcm) >= 3200:
-                    peak = self._compute_pcm_peak_percent(raw_pcm)
-                    if peak > 0.0:
-                        if self._save_pcm_to_wav(tmp_wav, raw_pcm, sample_rate):
+                    clean_pcm, peak_pct = self._process_and_normalize_pcm(raw_pcm, sample_rate)
+                    if peak_pct > 0.0:
+                        if self._save_pcm_to_wav(tmp_wav, clean_pcm, sample_rate):
                             self.last_record_backend = backend_label
-                            self.last_peak_percent = peak
+                            self.last_peak_percent = peak_pct
                             return tmp_wav
                     elif fallback_zero_pcm is None:
-                        fallback_zero_pcm = (backend_label, raw_pcm)
+                        fallback_zero_pcm = (backend_label, clean_pcm)
             except Exception:
                 continue
 
         if fallback_zero_pcm is not None:
-            backend_label, raw_pcm = fallback_zero_pcm
-            if self._save_pcm_to_wav(tmp_wav, raw_pcm, sample_rate):
+            backend_label, clean_pcm = fallback_zero_pcm
+            if self._save_pcm_to_wav(tmp_wav, clean_pcm, sample_rate):
                 self.last_record_backend = backend_label
                 self.last_peak_percent = 0.0
                 return tmp_wav
-
-        # Tầng 4: Thư viện Python `sounddevice`
-        try:
-            import sounddevice as sd  # type: ignore
-            input_dev = None
-            for idx, dev in enumerate(sd.query_devices()):
-                if int(dev.get("max_input_channels", 0)) > 0:
-                    name_low = str(dev.get("name", "")).lower()
-                    if "pulse" in name_low or "pipewire" in name_low or "alc257" in name_low or "generic" in name_low:
-                        input_dev = idx
-                        break
-                    if input_dev is None:
-                        input_dev = idx
-            frames = int(duration_sec * sample_rate)
-            recording = sd.rec(frames, samplerate=sample_rate, channels=1, dtype="int16", device=input_dev)
-            sd.wait()
-            raw_pcm = recording.tobytes()
-            if self._save_pcm_to_wav(tmp_wav, raw_pcm, sample_rate):
-                self.last_record_backend = f"sounddevice (dev={input_dev})"
-                self.last_peak_percent = self._compute_pcm_peak_percent(raw_pcm)
-                return tmp_wav
-        except Exception:
-            pass
 
         return None
 
@@ -341,11 +373,21 @@ class SpeechEngine:
         try:
             import speech_recognition as sr  # type: ignore
             recognizer = sr.Recognizer()
+            recognizer.dynamic_energy_threshold = False
             with sr.AudioFile(wav_path) as source:
                 audio_data = recognizer.record(source)
-            text = recognizer.recognize_google(audio_data, language="vi-VN").strip()
-            if text:
-                return text
+            res = recognizer.recognize_google(audio_data, language="vi-VN", show_all=True)
+            if isinstance(res, dict) and "alternative" in res and res["alternative"]:
+                # Ưu tiên câu có chứa từ khóa khu vực/phòng/hành lang nếu có trong danh sách phương án
+                alts = [str(item.get("transcript", "")).strip() for item in res["alternative"] if item.get("transcript")]
+                for alt in alts:
+                    low = alt.lower()
+                    if any(k in low for k in ("khu", "phòng", "hành lang", "đến", "từ", "qua", "về", "a", "b", "c", "d")):
+                        return alt
+                if alts:
+                    return alts[0]
+            elif isinstance(res, str) and res.strip():
+                return res.strip()
         except Exception:
             pass
 
@@ -368,7 +410,7 @@ class SpeechRecognitionNode(Node):
         self.audio_file = audio_file
         self.last_status = "IDLE - Đang chờ câu lệnh giọng nói..."
 
-        self.get_logger().info("Đang khởi tạo bộ thu âm & nhận dạng giọng nói (Card 2 / PulseAudio + Whisper/Vosk/Google)...")
+        self.get_logger().info("Đang khởi tạo bộ thu âm & nhận dạng giọng nói (Card 2 ALC257 + Auto-Gain + Google STT)...")
         self.engine = SpeechEngine(
             preferred_engine=engine_name,
             whisper_model_size=whisper_model,
@@ -440,7 +482,7 @@ class SpeechRecognitionNode(Node):
                     continue
                 print(
                     f"🎙️  Đã thu âm thành công qua [{self.engine.last_record_backend}] "
-                    f"(Mức âm lượng Peak: {self.engine.last_peak_percent:.1f}%). Đang nhận dạng..."
+                    f"(Mức âm lượng gốc: {self.engine.last_peak_percent:.1f}%). Đang nhận dạng..."
                 )
                 recognized = self.engine.transcribe_file(wav_path)
                 if recognized:
@@ -484,7 +526,7 @@ def main(args=None) -> None:
         wav = eng.record_microphone_wav(duration_sec=2.0)
         if wav:
             print(f"[PASS] Thu âm thành công: {wav} ({os.path.getsize(wav)} bytes)")
-            print(f"       Backend: {eng.last_record_backend} | Peak Volume: {eng.last_peak_percent:.1f}%")
+            print(f"       Backend: {eng.last_record_backend} | Raw Peak Volume: {eng.last_peak_percent:.1f}%")
             sys.exit(0)
         else:
             print("[FAIL] Không thu âm được từ Microphone.")

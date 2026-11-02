@@ -139,6 +139,23 @@ class VoiceCommandParser:
         norm = re.sub(r"[^\w\s]", " ", strip_accents(cleaned_orig.lower()))
         norm = re.sub(r"\s+", " ", norm).strip()
 
+        # Chuẩn hóa cách phát âm tên chữ cái tiếng Việt từ Google STT (bê -> b, xê/sê -> c, đê/dê -> d)
+        norm = re.sub(
+            r"\b(khu vuc|khu|vung|phong|hanh lang|diem|tu|den|toi|qua|sang|ve)\s+(?:be|bo|bi)\b",
+            r"\1 b",
+            norm,
+        )
+        norm = re.sub(
+            r"\b(khu vuc|khu|vung|phong|hanh lang|diem|tu|den|toi|qua|sang|ve)\s+(?:xe|se|xi|si)\b",
+            r"\1 c",
+            norm,
+        )
+        norm = re.sub(
+            r"\b(khu vuc|khu|vung|phong|hanh lang|diem|tu|den|toi|qua|sang|ve)\s+(?:de)\b",
+            r"\1 d",
+            norm,
+        )
+
         if not norm:
             return {
                 "valid": False,
