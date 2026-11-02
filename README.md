@@ -24,7 +24,7 @@ Package **ROS 2 Humble** hoạt động **hoàn toàn độc lập** cho robot *
 ```text
 rua4_giongnoi/
 ├── package.xml                          # Khai báo dependencies (rclpy, std_msgs, visualization_msgs, nav2...)
-├── setup.py                             # Cấu hình cài đặt Python package & 4 console_scripts
+├── setup.py                             # Cấu hình cài đặt Python package & 5 console_scripts
 ├── setup.cfg
 ├── rua4_giongnoi/                       # Mã nguồn chính của package
 │   ├── __init__.py
@@ -141,25 +141,6 @@ ros2 launch rua4_giongnoi lab7_voice_nav.launch.py
   - **Cột Phải**: Nút thu âm Microphone **`[MIC: THU ÂM GIỌNG NÓI]`** (click chuột hoặc nhấn phím `Space`), 4 nút chọn nhanh Khu vực `A/B/C/D`, ô nhập câu lệnh tùy chỉnh, 6 nút câu lệnh giọng nói mẫu (click chuột hoặc nhấn phím `1`–`6`) và nút **`[DỪNG / HỦY]`**.
 - *(Hoặc chạy riêng giao diện GUI bằng lệnh: `ros2 run rua4_giongnoi voice_control_gui`).*
 
-### Bước 4 – Kịch bản Thử nghiệm & Quay Video Demo
-Tại cửa sổ Terminal của `speech_recognition_node`, bạn có thể **nhấn `Enter` để nói trực tiếp vào Microphone**, hoặc **nhấn phím `1` – `6`** (hoặc phát qua topic `/voice_command`) để kiểm chứng đầy đủ các yêu cầu:
-
-1. **Câu lệnh 1 (Đơn điểm theo mã vùng)**:
-   - Nói / Chọn `[1]`: **`"Đi đến khu vực A."`**
-   - $\rightarrow$ Robot xác định đích **Khu vực A – Phòng học** `(6.0, 2.0)` và tự động di chuyển tránh vật cản tới A.
-2. **Câu lệnh 2 (Đơn điểm theo tên ngữ nghĩa)**:
-   - Nói / Chọn `[2]`: **`"Đi đến phòng thí nghiệm."`**
-   - $\rightarrow$ Robot ánh xạ *"phòng thí nghiệm"* sang **Khu vực B** `(2.0, 14.0)` và điều hướng tới B.
-3. **Câu lệnh 3 (Đi từ A đến B khi robot đang ở vị trí khác)**:
-   - Nói / Chọn `[3]`: **`"Di chuyển từ khu vực A đến khu vực B."`**
-   - $\rightarrow$ Hệ thống phát hiện robot chưa đứng ở A nên tự động lập lộ trình **qua A trước rồi mới đến B** (`A → B`).
-4. **Câu lệnh 4 (Mở rộng đa điểm — Mục 5)**:
-   - Nói / Chọn `[4]`: **`"Đi từ phòng A qua hành lang C rồi đến phòng B."`**
-   - $\rightarrow$ Hệ thống lập chuỗi hành trình 3 chặng liên tiếp **`A → C → B`**, vẽ đường dự kiến màu hồng trên RViz2 và lần lượt đi qua từng khu vực.
-5. **Câu lệnh 5 (Xử lý khu vực không tồn tại — Yêu cầu 3.4)**:
-   - Nói / Chọn `[5]`: **`"Đi đến khu vực Z."`** (hoặc *"Đi đến phòng giám đốc."*)
-   - $\rightarrow$ Hệ thống báo lỗi `[LỖI KHU VỰC KHÔNG TỒN TẠI] Không tìm thấy 'Khu vực Z' trên bản đồ!`, từ chối gửi Goal sai và giữ robot đứng yên an toàn.
-
 ---
 
 ## 🧪 Chạy Kiểm thử Tự động Bộ Phân tích Câu lệnh (Self-Test)
@@ -168,17 +149,3 @@ Tại cửa sổ Terminal của `speech_recognition_node`, bạn có thể **nh�
 ```bash
 ros2 run rua4_giongnoi voice_navigation_node --self-test
 ```
-
----
-
-## 🔧 Xử lý Lỗi Thường Gặp (Troubleshooting)
-
-1. **Lỗi `TypeError: canonicalize_version() got an unexpected keyword argument 'strip_trailing_zero'` khi `colcon build`**:
-   ```bash
-   pip uninstall -y setuptools
-   colcon build --symlink-install --packages-select rua4_giongnoi
-   ```
-2. **Lỗi `AttributeError: _ARRAY_API not found` khi import OpenCV / cv_bridge**:
-   ```bash
-   pip install "numpy<2"
-   ```
