@@ -11,7 +11,7 @@ map_metadata:
   height_px: 1005
   resolution_m_per_px: 0.05
   origin_world: [-15.1, -25.0, 0.0]
-  total_free_area_m2: 1185.64
+  total_free_area_m2: 1184.12
   segmented_image: "maps/map_segmented.png"
 
 regions:
@@ -21,8 +21,8 @@ regions:
     semantic_label: "Phòng học"
     numeric_label: 1
     radius_m: 2.5
-    area_pixels: 66420
-    area_m2: 166.05
+    area_pixels: 66335
+    area_m2: 165.84
     color_rgb: [66, 133, 244]
     pixel_centroid:
       u: 422
@@ -39,8 +39,8 @@ regions:
     semantic_label: "Phòng thí nghiệm"
     numeric_label: 2
     radius_m: 2.5
-    area_pixels: 146734
-    area_m2: 366.84
+    area_pixels: 146420
+    area_m2: 366.05
     color_rgb: [52, 168, 83]
     pixel_centroid:
       u: 342
@@ -57,8 +57,8 @@ regions:
     semantic_label: "Hành lang"
     numeric_label: 3
     radius_m: 2.5
-    area_pixels: 88826
-    area_m2: 222.07
+    area_pixels: 88753
+    area_m2: 221.88
     color_rgb: [251, 188, 5]
     pixel_centroid:
       u: 232
@@ -75,8 +75,8 @@ regions:
     semantic_label: "Khu kho thực hành"
     numeric_label: 4
     radius_m: 2.5
-    area_pixels: 172271
-    area_m2: 430.68
+    area_pixels: 172138
+    area_m2: 430.35
     color_rgb: [234, 67, 53]
     pixel_centroid:
       u: 342

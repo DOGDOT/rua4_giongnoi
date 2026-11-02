@@ -10,7 +10,7 @@
       -25.0,
       0.0
     ],
-    "total_free_area_m2": 1185.64,
+    "total_free_area_m2": 1184.12,
     "segmented_image": "maps/map_segmented.png"
   },
   "conversion_formulas": {
@@ -58,8 +58,8 @@
         "u": 422,
         "v": 464
       },
-      "area_pixels": 66420,
-      "area_m2": 166.05
+      "area_pixels": 66335,
+      "area_m2": 165.84
     },
     {
       "id": "B",
@@ -102,8 +102,8 @@
         "u": 342,
         "v": 224
       },
-      "area_pixels": 146734,
-      "area_m2": 366.84
+      "area_pixels": 146420,
+      "area_m2": 366.05
     },
     {
       "id": "C",
@@ -146,8 +146,8 @@
         "u": 232,
         "v": 474
       },
-      "area_pixels": 88826,
-      "area_m2": 222.07
+      "area_pixels": 88753,
+      "area_m2": 221.88
     },
     {
       "id": "D",
@@ -195,8 +195,8 @@
         "u": 342,
         "v": 664
       },
-      "area_pixels": 172271,
-      "area_m2": 430.68
+      "area_pixels": 172138,
+      "area_m2": 430.35
     }
   ]
 }
