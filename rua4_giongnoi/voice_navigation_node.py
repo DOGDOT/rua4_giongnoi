@@ -8,17 +8,19 @@ Chức năng:
   2. Lắng nghe câu lệnh văn bản trên topic `/voice_command` (`std_msgs/msg/String`).
   3. Phân tích ngôn ngữ tự nhiên tiếng Việt / tiếng Anh (NLU Parser):
      - Câu lệnh 1 đích: "Đi đến khu vực A", "Đi đến phòng thí nghiệm" -> Điều hướng tới đích.
-     - Câu lệnh 2 điểm (Từ A đến B): "Di chuyển từ khu vực A đến khu vực B":
+     - Câu lệnh 2 điểm (Từ A đến B): "Di chuyển từ khu vực A đến khu vực B", "Đến A rồi về C":
          + Kiểm tra vị trí hiện tại của robot (từ `/amcl_pose`).
          + Nếu robot đang ở vị trí khác ngoài vùng A (khoảng cách > bán kính vùng A), tự động
            điều hướng QUA KHU VỰC A TRƯỚC KHI ĐẾN KHU VỰC B (Route: A -> B).
-         + Nếu robot đã ở sẵn trong vùng A, điều hướng thẳng tới B (Route: B).
+         + Nếu robot đã ở sẵn trong vùng A và câu lệnh có từ khóa "từ A", điều hướng thẳng tới B (Route: B).
      - Câu lệnh đa điểm (Mở rộng Mục 5): "Đi từ phòng A qua hành lang C rồi đến phòng B"
-         + Trích xuất chuỗi hành trình tuần tự (Route: A -> C -> B) và điều hướng qua từng điểm.
+         + Trích xuất chuỗi hành trình tuần tự (Route: A -> C -> B) và điều hướng liên tiếp qua từng điểm.
      - Kiểm tra khu vực không tồn tại (Yêu cầu 3.4):
          + Ví dụ: "Đi đến khu vực Z", "Đi đến phòng giám đốc" -> Phát hiện khu vực không tồn tại
            trên bản đồ ngữ nghĩa, thông báo lỗi rõ ràng và từ chối gửi lệnh sai cho Nav2.
-  4. Hiển thị trực quan các khu vực (Cylinder + Nhãn 3D) và đường đi dự kiến (LineStrip + Arrow)
+  4. Thực thi điều hướng tuần tự đa điểm qua `rclpy.action.ActionClient(NavigateToPose)` bất đồng bộ
+     an toàn đa luồng (không xung đột `SingleThreadedExecutor` với `rclpy.spin` ở luồng chính).
+  5. Hiển thị trực quan các khu vực (Cylinder + Nhãn 3D) và đường đi dự kiến (LineStrip)
      trên RViz2 qua topic `/semantic_regions_markers` (`visualization_msgs/msg/MarkerArray`).
 """
 
@@ -36,7 +38,10 @@ from typing import Dict, List, Tuple, Optional, Any
 try:
     import rclpy
     from rclpy.node import Node
+    from rclpy.action import ActionClient
     from rclpy.utilities import remove_ros_args
+    from action_msgs.msg import GoalStatus
+    from nav2_msgs.action import NavigateToPose
     from std_msgs.msg import String
     from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped, Point
     from visualization_msgs.msg import Marker, MarkerArray
@@ -44,19 +49,15 @@ try:
 except ImportError:
     HAS_ROS2 = False
     Node = object
-
-try:
-    from nav2_simple_commander.robot_navigator import BasicNavigator, TaskResult
-    HAS_NAV2_COMMANDER = True
-except ImportError:
-    BasicNavigator = None
-    TaskResult = None
-    HAS_NAV2_COMMANDER = False
-
-try:
-    from ament_index_python.packages import get_package_share_directory
-except ImportError:
-    get_package_share_directory = None
+    ActionClient = None
+    GoalStatus = None
+    NavigateToPose = None
+    String = Any
+    PoseStamped = Any
+    PoseWithCovarianceStamped = Any
+    Point = Any
+    Marker = Any
+    MarkerArray = Any
 
 from rua4_giongnoi.map_segmentation import DEFAULT_SEMANTIC_REGIONS, resolve_pkg_root
 
@@ -128,7 +129,7 @@ class VoiceCommandParser:
         Phân tích câu lệnh giọng nói và trả về cấu trúc lộ trình:
           - valid: True nếu hợp lệ, False nếu không tìm thấy khu vực hoặc có khu vực không tồn tại.
           - raw_command: Câu lệnh gốc.
-          - command_type: 'single_goal' | 'start_to_goal' | 'multi_waypoint' | 'invalid_region' | 'unrecognized'
+          - command_type: 'single_goal' | 'start_to_goal' | 'multi_waypoint' | 'stop' | 'invalid_region' | 'unrecognized'
           - extracted_regions: Danh sách các mã khu vực theo thứ tự xuất hiện trong câu lệnh (VD: ['A', 'B']).
           - planned_waypoints: Danh sách các khu vực thực tế robot sẽ lần lượt đi qua.
           - unknown_regions: Danh sách tên các khu vực không tồn tại được phát hiện trong câu lệnh.
@@ -149,15 +150,25 @@ class VoiceCommandParser:
                 "message": "Câu lệnh rỗng. Vui lòng nói rõ khu vực cần đến (A, B, C, D).",
             }
 
+        # 0. Kiểm tra câu lệnh Dừng / Hủy hành trình
+        if re.search(r"\b(?:dung|dung lai|dung hanh trinh|huy|huy hanh trinh|huy lo trinh|stop|cancel)\b", norm):
+            return {
+                "valid": True,
+                "raw_command": cleaned_orig,
+                "command_type": "stop",
+                "extracted_regions": [],
+                "planned_waypoints": [],
+                "unknown_regions": [],
+                "message": "STOPPED - Đã hủy hành trình hiện tại, robot dừng an toàn.",
+            }
+
         # 1. Phát hiện các tham chiếu khu vực bằng chữ cái đơn (khu vực X, vùng X, phòng X, từ X, đến X, qua X)
         valid_ids = set(self.regions.keys())
         unknown_mentions: List[str] = []
 
-        # Kiểm tra các mẫu: "khu vuc <chữ>", "khu <chữ>", "vung <chữ>", "phong <chữ>", "hanh lang <chữ>", "diem <chữ>"
         explicit_letter_pattern = re.compile(
             r"\b(?:khu vuc|khu|vung|phong|hanh lang|diem|zone|area|room)\s+([a-z0-9]+)\b"
         )
-        # Các từ tiếng Việt thông dụng đi sau "phòng" hoặc "khu" thuộc các khu vực hợp lệ
         known_following_words = {
             "hoc", "thi", "lab", "cho", "sac", "xuat", "kho", "trung", "chinh"
         }
@@ -167,21 +178,18 @@ class VoiceCommandParser:
                 if token not in valid_ids:
                     unknown_mentions.append(f"Khu vực {token}")
             elif token.lower() not in known_following_words and token not in valid_ids:
-                # Kiểm tra xem cụm dài hơn có nằm trong alias hợp lệ không
                 span_start = match.start()
                 tail_str = norm[span_start:]
                 matched_known = any(tail_str.startswith(p) for p, _ in self.phrase_to_id)
                 if not matched_known:
                     unknown_mentions.append(match.group(0))
 
-        # Kiểm tra thêm mẫu "tu <X> den <Y>" hoặc "qua <Z>" với chữ cái đơn
         short_rel_pattern = re.compile(r"\b(?:tu|den|toi|qua|sang|ve)\s+([a-z])\b")
         for match in short_rel_pattern.finditer(norm):
             letter = match.group(1).upper()
             if letter not in valid_ids:
                 unknown_mentions.append(f"Khu vực {letter}")
 
-        # Kiểm tra các tên phòng lạ phổ biến (ví dụ: "phòng giám đốc", "phòng họp", "nhà bếp", "căng tin"...)
         unknown_room_pattern = re.compile(
             r"\b(?:phong\s+(?:giam doc|hop|khach|ngu|an|bep|ve sinh|bao ve)|nha\s+(?:bep|kho|xe)|cang tin|thu vien)\b"
         )
@@ -222,7 +230,7 @@ class VoiceCommandParser:
                         occupied[i] = True
                     matched_spans.append((s_idx, e_idx, rid))
 
-        # Quét bổ sung chữ cái đơn A/B/C/D đứng sau giới từ ("từ A", "đến B", "qua C", "tới D")
+        # Quét bổ sung chữ cái đơn A/B/C/D đứng sau giới từ ("từ A", "đến B", "qua C", "tới D", "về C")
         for m in short_rel_pattern.finditer(norm):
             s_idx, e_idx = m.start(1), m.end(1)
             letter = m.group(1).upper()
@@ -274,7 +282,7 @@ class VoiceCommandParser:
                 ),
             }
 
-        # Trường hợp >= 2 khu vực (Ví dụ: "Từ A đến B" hoặc "Từ A qua C rồi đến B")
+        # Trường hợp >= 2 khu vực (Ví dụ: "Từ A đến B", "Đến A rồi về C", "Từ A qua C rồi đến B")
         start_id = extracted[0]
         start_info = self.regions[start_id]
         sx = float(start_info["goal_world"]["x"])
@@ -285,7 +293,6 @@ class VoiceCommandParser:
         cmd_type = "start_to_goal" if len(extracted) == 2 else "multi_waypoint"
 
         if has_from_keyword and dist_to_start <= s_radius:
-            # Robot đã ở sẵn trong khu vực xuất phát A -> đi tiếp các điểm còn lại
             planned = extracted[1:]
             route_str = " -> ".join(f"{r} ({self.regions[r]['semantic_label']})" for r in planned)
             msg = (
@@ -293,12 +300,11 @@ class VoiceCommandParser:
                 f"Bắt đầu lộ trình: {route_str}."
             )
         else:
-            # Robot đang ở vị trí khác ngoài khu vực A -> phải đi qua A trước khi đến các điểm tiếp theo!
             planned = list(extracted)
             route_str = " -> ".join(f"{r} ({self.regions[r]['semantic_label']})" for r in planned)
             msg = (
-                f"Robot hiện ở ({rx:.1f}, {ry:.1f}), cách điểm xuất phát {start_info['name']} {dist_to_start:.2f}m. "
-                f"Điều hướng tuần tự qua điểm xuất phát trước: {route_str}."
+                f"Robot hiện ở ({rx:.1f}, {ry:.1f}), cách điểm đầu {start_info['name']} {dist_to_start:.2f}m. "
+                f"Điều hướng tuần tự qua từng điểm: {route_str}."
             )
 
         return {
@@ -328,7 +334,11 @@ class VoiceNavigationNode(Node):
         self.active_route: List[str] = []
         self.current_status_text: str = "IDLE - Sẵn sàng nhận lệnh giọng nói"
         self.last_command_text: str = "(Chưa có câu lệnh)"
-        self._nav_lock = threading.Lock()
+
+        # Quản lý tiến trình điều hướng đa điểm an toàn đa luồng
+        self._state_lock = threading.Lock()
+        self._route_id: int = 0
+        self._current_goal_handle: Optional[Any] = None
 
         # Publishers & Subscribers
         self.sub_voice = self.create_subscription(
@@ -340,12 +350,13 @@ class VoiceNavigationNode(Node):
         self.pub_status = self.create_publisher(String, "/voice_nav_status", 10)
         self.pub_markers = self.create_publisher(MarkerArray, "/semantic_regions_markers", 10)
 
+        # ActionClient trực tiếp trên VoiceNavigationNode (được rclpy.spin xử lý ở luồng chính)
+        self._nav_action_client: Optional[Any] = None
+        if HAS_ROS2 and not self.dry_run and ActionClient is not None and NavigateToPose is not None:
+            self._nav_action_client = ActionClient(self, NavigateToPose, "navigate_to_pose")
+
         # Timer xuất MarkerArray định kỳ 1.0 Hz lên RViz2
         self.marker_timer = self.create_timer(1.0, self.publish_rviz_markers)
-
-        self.navigator: Optional[Any] = None
-        if HAS_NAV2_COMMANDER and not self.dry_run:
-            self.navigator = BasicNavigator(node_name="voice_nav2_commander")
 
         self.get_logger().info("=" * 72)
         self.get_logger().info(" VOICE NAVIGATION NODE ĐÃ KHỞI ĐỘNG (Package: rua4_giongnoi)")
@@ -366,6 +377,19 @@ class VoiceNavigationNode(Node):
         msg.data = status_str
         self.pub_status.publish(msg)
 
+    def _cancel_active_goal(self) -> None:
+        """Hủy goal hiện tại trên Nav2 nếu đang chạy."""
+        with self._state_lock:
+            self._route_id += 1
+            gh = self._current_goal_handle
+            self._current_goal_handle = None
+        if gh is not None:
+            try:
+                self.get_logger().info("🛑 Đang gửi yêu cầu hủy Goal hiện tại tới Nav2...")
+                gh.cancel_goal_async()
+            except Exception as e:
+                self.get_logger().warn(f"Không thể hủy goal cũ: {e}")
+
     def _on_voice_command(self, msg: String) -> None:
         raw_cmd = msg.data.strip()
         if not raw_cmd:
@@ -381,16 +405,29 @@ class VoiceNavigationNode(Node):
             self.publish_rviz_markers()
             return
 
-        waypoints = parsed["planned_waypoints"]
-        self.active_route = waypoints
+        if parsed["command_type"] == "stop":
+            self._cancel_active_goal()
+            self.active_route = []
+            self.get_logger().info("🛑 Đã dừng toàn bộ lộ trình theo lệnh người dùng.")
+            self._publish_status(parsed["message"])
+            self.publish_rviz_markers()
+            return
+
+        waypoints = list(parsed["planned_waypoints"])
+        # Hủy hành trình cũ (nếu có) và cấp mã route_id mới
+        self._cancel_active_goal()
+        with self._state_lock:
+            my_route_id = self._route_id
+
+        self.active_route = list(waypoints)
         self.get_logger().info(f"✅ Phân tích thành công [{parsed['command_type']}]: {parsed['message']}")
         self._publish_status(f"EXECUTING: {' -> '.join(waypoints)} | {parsed['message']}")
         self.publish_rviz_markers()
 
-        # Thực thi điều hướng Nav2 trên luồng riêng để không chặn callback ROS
+        # Thực thi điều hướng chuỗi điểm Nav2 trên luồng riêng (không gọi spin_until_future_complete)
         threading.Thread(
             target=self._execute_navigation_route,
-            args=(waypoints, raw_cmd),
+            args=(waypoints, raw_cmd, my_route_id),
             daemon=True,
         ).start()
 
@@ -405,63 +442,180 @@ class VoiceNavigationNode(Node):
         pose.pose.orientation.w = math.cos(yaw * 0.5)
         return pose
 
-    def _execute_navigation_route(self, waypoints: List[str], raw_cmd: str) -> None:
-        if not self._nav_lock.acquire(blocking=False):
-            self.get_logger().warn("Robot đang thực hiện một hành trình khác. Đang cập nhật lộ trình mới...")
-            if self.navigator is not None:
-                try:
-                    self.navigator.cancelTask()
-                except Exception:
-                    pass
-            self._nav_lock.acquire()
+    def _is_route_active(self, route_id: int) -> bool:
+        with self._state_lock:
+            return rclpy.ok() and (self._route_id == route_id)
 
+    def _navigate_single_waypoint(self, wid: str, idx: int, total: int, route_id: int) -> bool:
+        """
+        Điều hướng tới 1 khu vực `wid` thông qua ActionClient bất đồng bộ.
+        Trả về True nếu robot đến đích thành công, False nếu bị hủy hoặc lỗi.
+        """
+        reg = self.regions[wid]
+        gx = float(reg["goal_world"]["x"])
+        gy = float(reg["goal_world"]["y"])
+        gyaw = float(reg["goal_world"]["yaw"])
+
+        step_msg = (
+            f"[Chặng {idx}/{total}] Đang di chuyển tới {reg['name']} "
+            f"(x={gx:.2f}, y={gy:.2f}, yaw={gyaw:.2f} rad)..."
+        )
+        self.get_logger().info(step_msg)
+        self._publish_status(step_msg)
+
+        if self.dry_run or self._nav_action_client is None:
+            time.sleep(1.0)
+            self.robot_xy = (gx, gy)
+            self.robot_yaw = gyaw
+            self.get_logger().info(f"✔️  [Dry-Run] Đã đến {reg['name']}!")
+            return True
+
+        # Đợi Action Server `navigate_to_pose` sẵn sàng
+        wait_count = 0
+        while not self._nav_action_client.wait_for_server(timeout_sec=1.0):
+            if not self._is_route_active(route_id):
+                return False
+            wait_count += 1
+            if wait_count % 5 == 1:
+                self.get_logger().info("Đang chờ Action Server 'navigate_to_pose' của Nav2...")
+
+        # Cho phép thử lại tối đa 2 lần nếu Nav2 báo ABORTED tạm thời khi chuyển chặng
+        for attempt in range(1, 3):
+            if not self._is_route_active(route_id):
+                return False
+
+            goal_msg = NavigateToPose.Goal()
+            goal_msg.pose = self._make_pose_stamped(gx, gy, gyaw)
+
+            self.get_logger().info(
+                f"🚀 [Chặng {idx}/{total}] Gửi Goal tới Nav2: {wid} ({gx:.1f}, {gy:.1f}) (Lần thử {attempt})"
+            )
+            send_goal_future = self._nav_action_client.send_goal_async(goal_msg)
+
+            # Chờ luồng chính (rclpy.spin) nhận phản hồi chấp nhận Goal
+            t0 = time.time()
+            while not send_goal_future.done():
+                if not self._is_route_active(route_id):
+                    return False
+                if time.time() - t0 > 10.0:
+                    self.get_logger().error(f"Quá thời gian chờ Nav2 chấp nhận Goal {wid}!")
+                    break
+                time.sleep(0.05)
+
+            if not send_goal_future.done():
+                continue
+
+            goal_handle = send_goal_future.result()
+            if goal_handle is None or not goal_handle.accepted:
+                self.get_logger().warn(f"Nav2 từ chối Goal {wid} (Lần {attempt}).")
+                time.sleep(0.5)
+                continue
+
+            with self._state_lock:
+                if self._route_id != route_id:
+                    try:
+                        goal_handle.cancel_goal_async()
+                    except Exception:
+                        pass
+                    return False
+                self._current_goal_handle = goal_handle
+
+            result_future = goal_handle.get_result_async()
+            start_nav_t = time.time()
+
+            # Chờ robot di chuyển tới đích
+            while not result_future.done():
+                if not self._is_route_active(route_id):
+                    try:
+                        goal_handle.cancel_goal_async()
+                    except Exception:
+                        pass
+                    return False
+                if time.time() - start_nav_t > 180.0:
+                    self.get_logger().error(f"Quá thời gian 180s khi di chuyển tới {reg['name']}!")
+                    try:
+                        goal_handle.cancel_goal_async()
+                    except Exception:
+                        pass
+                    return False
+                time.sleep(0.1)
+
+            with self._state_lock:
+                if self._current_goal_handle == goal_handle:
+                    self._current_goal_handle = None
+
+            if not self._is_route_active(route_id):
+                return False
+
+            res_wrap = result_future.result()
+            status = res_wrap.status if res_wrap is not None else GoalStatus.STATUS_UNKNOWN
+            dist_remaining = math.hypot(self.robot_xy[0] - gx, self.robot_xy[1] - gy)
+
+            if status == GoalStatus.STATUS_SUCCEEDED or dist_remaining <= 0.65:
+                self.robot_xy = (gx, gy)
+                self.robot_yaw = gyaw
+                reached_msg = (
+                    f"REACHED {wid}: [Chặng {idx}/{total}] Đã đến {reg['name']} thành công!"
+                )
+                self.get_logger().info(f"🎯 {reached_msg}")
+                self._publish_status(reached_msg)
+                return True
+
+            if status == GoalStatus.STATUS_CANCELED:
+                self.get_logger().info(f"Chặng {wid} đã bị hủy (CANCELED).")
+                return False
+
+            self.get_logger().warn(
+                f"⚠️ Chặng {reg['name']} kết thúc với mã trạng thái={status} (khoảng cách còn {dist_remaining:.2f}m)."
+            )
+            if attempt < 2 and self._is_route_active(route_id):
+                self.get_logger().info(f"🔄 Thử gửi lại Goal tới {reg['name']} sau 0.8s...")
+                time.sleep(0.8)
+
+        return False
+
+    def _execute_navigation_route(self, waypoints: List[str], raw_cmd: str, route_id: int) -> None:
+        """Thực thi tuần tự toàn bộ các khu vực trong lộ trình (VD: A -> C -> B)."""
         try:
+            # Nếu câu lệnh mới vừa hủy một goal cũ, chờ 0.35s để Nav2 ổn định trạng thái
+            if route_id > 1:
+                time.sleep(0.35)
+
             total = len(waypoints)
             for idx, wid in enumerate(waypoints, start=1):
-                reg = self.regions[wid]
-                gx = float(reg["goal_world"]["x"])
-                gy = float(reg["goal_world"]["y"])
-                gyaw = float(reg["goal_world"]["yaw"])
+                if not self._is_route_active(route_id):
+                    return
 
-                step_msg = (
-                    f"[Chặng {idx}/{total}] Đang di chuyển tới {reg['name']} "
-                    f"(x={gx:.2f}, y={gy:.2f}, yaw={gyaw:.2f} rad)..."
-                )
-                self.get_logger().info(step_msg)
-                self._publish_status(step_msg)
+                ok = self._navigate_single_waypoint(wid, idx, total, route_id)
+                if not ok:
+                    if self._is_route_active(route_id):
+                        fail_msg = f"FAILED: Không thể hoàn thành chặng {idx}/{total} ({wid})"
+                        self.get_logger().error(fail_msg)
+                        self._publish_status(fail_msg)
+                    return
 
-                if self.dry_run or self.navigator is None:
-                    time.sleep(1.0)
-                    self.robot_xy = (gx, gy)
-                    self.robot_yaw = gyaw
-                    self.get_logger().info(f"✔️  [Dry-Run] Đã đến {reg['name']}!")
-                    continue
+                # Cập nhật danh sách các điểm còn lại để vẽ trên RViz2 và chuyển sang điểm kế tiếp
+                if self._is_route_active(route_id):
+                    self.active_route = waypoints[idx:]
+                    self.publish_rviz_markers()
+                    if idx < total:
+                        next_wid = waypoints[idx]
+                        next_name = self.regions[next_wid]["name"]
+                        trans_msg = (
+                            f"NEXT {next_wid}: Đã qua {wid}, tiếp tục hành trình sang chặng {idx + 1}/{total}: {next_name}..."
+                        )
+                        self.get_logger().info(f"➡️  {trans_msg}")
+                        self._publish_status(trans_msg)
+                        time.sleep(0.4)
 
-                goal_pose = self._make_pose_stamped(gx, gy, gyaw)
-                self.navigator.goToPose(goal_pose)
-
-                start_t = time.time()
-                while not self.navigator.isTaskComplete():
-                    if time.time() - start_t > 150.0:
-                        self.get_logger().error(f"Quá thời gian (Timeout) khi đi tới {reg['name']}!")
-                        self.navigator.cancelTask()
-                        break
-                    time.sleep(0.25)
-
-                result = self.navigator.getResult()
-                if result == TaskResult.SUCCEEDED:
-                    self.robot_xy = (gx, gy)
-                    self.robot_yaw = gyaw
-                    self.get_logger().info(f"🎯 Đã đến đích {reg['name']} thành công!")
-                else:
-                    self.get_logger().warn(f"⚠️ Chặng {reg['name']} kết thúc với mã trạng thái: {result}")
-                    break
-
-            done_msg = f"COMPLETED: Hoàn thành lệnh '{raw_cmd}' ({' -> '.join(waypoints)})"
-            self.get_logger().info(f"🏁 {done_msg}")
-            self._publish_status(done_msg)
-        finally:
-            self._nav_lock.release()
+            if self._is_route_active(route_id):
+                self.active_route = []
+                self.publish_rviz_markers()
+                done_msg = f"COMPLETED: Hoàn thành lộ trình '{raw_cmd}' ({' -> '.join(waypoints)})"
+                self.get_logger().info(f"🏁 {done_msg}")
+                self._publish_status(done_msg)
+        except Exception as e:
+            self.get_logger().error(f"Lỗi ngoại lệ trong luồng điều hướng: {e}")
 
     def publish_rviz_markers(self) -> None:
         """Xuất MarkerArray hiển thị 4 vùng ngữ nghĩa, nhãn tên và đường đi dự kiến trên RViz2."""
@@ -575,7 +729,7 @@ def run_self_test(report_out_path: Optional[str] = None) -> int:
             "expect_waypoints": ["B"],
         },
         {
-            "name": "Test 3 - Câu lệnh Từ A đến B khi robot đang ở vị trí khác (Trạm D: 0.0, 0.0)",
+            "name": "Test 3 - Câu lệnh Từ A đến B khi robot đang ở vị trí khác (0.0, 0.0)",
             "cmd": "Di chuyển từ khu vực A đến khu vực B.",
             "robot_xy": (0.0, 0.0),
             "expect_valid": True,

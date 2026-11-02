@@ -253,6 +253,8 @@ class VoiceControlGUI:
                     }
                     self.nav_status = "STOPPED - Da huy hanh trinh hien tai"
                     self.add_log("[STOP] Nguoi dung nhan nut DUNG / XOA LO TRINH")
+                    if self.ros_node is not None:
+                        self.ros_node.publish_command("Dừng hành trình")
                 elif btn_id.startswith("btn_zone_"):
                     zid = str(payload)
                     self.trigger_voice_command(f"Đi đến khu vực {zid}.", source="ZONE-BTN")
@@ -369,7 +371,10 @@ class VoiceControlGUINode(Node):
             self.gui.add_log(f"[TOPIC] Nhan lenh: \"{strip_accents(text)}\"")
 
     def _on_nav_status(self, msg: String) -> None:
-        self.gui.nav_status = strip_accents(msg.data)
+        clean_st = strip_accents(msg.data)
+        self.gui.nav_status = clean_st
+        if any(clean_st.startswith(k) for k in ("[Chang", "REACHED", "NEXT", "COMPLETED", "FAILED", "STOPPED")):
+            self.gui.add_log(f"[NAV2] {clean_st}")
 
     def _on_amcl(self, msg: PoseWithCovarianceStamped) -> None:
         pos = msg.pose.pose.position
