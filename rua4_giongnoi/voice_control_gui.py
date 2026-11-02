@@ -12,8 +12,8 @@ Tính năng nổi bật của GUI:
          + Vẽ trực tiếp lộ trình dự kiến (mũi tên hồng nối qua các điểm A -> C -> B).
          + Hỗ trợ CLICK CHUỘT TRỰC TIẾP vào từng khu vực trên bản đồ để phát lệnh đi tới khu vực đó!
      - Cột Phải (Trung tâm Điều khiển Giọng nói - Voice Control Center):
-         + Nút bấm lớn [ 🎙️ THU ÂM GIỌNG NÓI (MIC 4s) ]: Click chuột (hoặc nhấn phím SPACE)
-           để thu âm từ Microphone và nhận diện bằng Whisper / Vosk.
+         + Nút bấm lớn [ THU ÂM GIỌNG NÓI QUA MIC (CLICK / SPACE) ]: Click chuột (hoặc nhấn phím SPACE)
+           để thu âm từ Microphone (Card 2 / PulseAudio / PipeWire) và nhận diện bằng Google STT / Whisper / Vosk.
          + Ô nhập câu lệnh trực tiếp trên GUI + nút [ GỬI LỆNH ]: Gõ câu lệnh tùy ý và nhấn Enter.
          + 06 Nút bấm Câu lệnh Giọng nói Mẫu (Click chuột hoặc nhấn phím 1..6) bao phủ toàn bộ yêu cầu:
              [1] "Đi đến khu vực A."
@@ -22,8 +22,8 @@ Tính năng nổi bật của GUI:
              [4] "Đi từ phòng A qua hành lang C rồi đến phòng B."
              [5] "Đi đến khu vực D."
              [6] "Đi đến khu vực Z." (Kiểm thử báo lỗi khu vực không tồn tại)
-         + Nút [ 🛑 DỪNG / XÓA LỘ TRÌNH ] để hủy hành trình hiện tại.
-         + Bảng trạng thái NLU & Nav2 thời gian thực (màu xanh khi hợp lệ, màu đỏ khi báo lỗi vùng không tồn tại).
+         + Nút [ DỪNG / HỦY ] để hủy hành trình hiện tại.
+         + Bảng trạng thái NLU & Nav2 thời gian thực (chuẩn hóa chữ không dấu trên OpenCV tránh lỗi `??`).
 """
 
 import os
@@ -53,6 +53,8 @@ try:
 except ImportError:
     HAS_ROS2 = False
     Node = object
+    String = Any
+    PoseWithCovarianceStamped = Any
 
 from rua4_giongnoi.map_segmentation import (
     resolve_pkg_root,
@@ -60,14 +62,15 @@ from rua4_giongnoi.map_segmentation import (
     world_to_pixel,
     pixel_to_world,
     write_png_rgb,
-    set_px,
     draw_rect,
-    draw_circle,
-    draw_arrow,
     draw_text,
 )
-from rua4_giongnoi.speech_recognition_node import SpeechEngine, SAMPLE_VOICE_COMMANDS
-from rua4_giongnoi.voice_navigation_node import load_semantic_regions, VoiceCommandParser
+from rua4_giongnoi.speech_recognition_node import SpeechEngine
+from rua4_giongnoi.voice_navigation_node import (
+    load_semantic_regions,
+    VoiceCommandParser,
+    strip_accents,
+)
 
 
 GUI_COMMANDS: List[Tuple[str, str]] = [
@@ -109,7 +112,7 @@ class VoiceControlGUI:
         self.typing_active: bool = False
         self.history_log: List[str] = [
             "[SYSTEM] Khoi dong Giao dien Dieu khien Giong noi (rua4_giongnoi)",
-            f"[STT] Engine nhan dang: {self.speech_engine.active_engine.upper()}",
+            f"[MIC/STT] Card 2 Audio + Engine: {self.speech_engine.active_engine.upper()}",
             "[MAP] Da nap 4 khu vuc: A (Phong hoc), B (Phong Lab), C (Hanh lang), D (Khu kho)",
         ]
 
@@ -157,7 +160,8 @@ class VoiceControlGUI:
 
     def add_log(self, line: str) -> None:
         ts = time.strftime("%H:%M:%S")
-        self.history_log.append(f"[{ts}] {line}")
+        clean_line = strip_accents(line)
+        self.history_log.append(f"[{ts}] {clean_line}")
         if len(self.history_log) > 7:
             self.history_log = self.history_log[-7:]
 
@@ -167,14 +171,15 @@ class VoiceControlGUI:
             return
         self.last_voice_text = cmd_text
         self.parsed_info = self.parser.parse(cmd_text, self.robot_xy)
+        ascii_cmd = strip_accents(cmd_text)
 
         if self.parsed_info["valid"]:
             route_str = " -> ".join(self.parsed_info["planned_waypoints"])
             self.nav_status = f"EXECUTING ROUTE: {route_str}"
-            self.add_log(f"[{source}] \"{cmd_text}\" => Route: {route_str}")
+            self.add_log(f"[{source}] \"{ascii_cmd}\" => Route: {route_str}")
         else:
-            self.nav_status = self.parsed_info["message"]
-            self.add_log(f"[ERROR] \"{cmd_text}\" => Khu vuc khong ton tai!")
+            self.nav_status = strip_accents(self.parsed_info["message"])
+            self.add_log(f"[ERROR] \"{ascii_cmd}\" => Khu vuc khong ton tai!")
 
         if self.ros_node is not None:
             self.ros_node.publish_command(cmd_text)
@@ -186,7 +191,7 @@ class VoiceControlGUI:
         def _worker() -> None:
             self.mic_state = "RECORDING"
             self.nav_status = f"DANG THU AM MICROPHONE ({self.record_seconds:.0f}s)... Hay noi cau lenh!"
-            self.add_log(f"[MIC] Bat dau thu am {self.record_seconds:.0f}s...")
+            self.add_log(f"[MIC] Bat dau thu am {self.record_seconds:.0f}s tren Card 2 / PulseAudio...")
             wav_path = self.speech_engine.record_microphone_wav(duration_sec=self.record_seconds)
             if not wav_path:
                 self.mic_state = "IDLE"
@@ -194,14 +199,17 @@ class VoiceControlGUI:
                 self.add_log("[MIC] Khong phat hien thiet bi thu am. Dung nut bam tren GUI.")
                 return
             self.mic_state = "TRANSCRIBING"
-            self.nav_status = "DANG NHAN DANG GIONG NOI (WHISPER / VOSK)..."
+            backend = self.speech_engine.last_record_backend
+            peak = self.speech_engine.last_peak_percent
+            self.nav_status = f"DA THU AM ({backend}, Peak: {peak:.0f}%) -> DANG NHAN DANG..."
+            self.add_log(f"[MIC] Thu am OK ({backend} | Peak: {peak:.0f}%). Dang nhan dang STT...")
             text = self.speech_engine.transcribe_file(wav_path)
             self.mic_state = "IDLE"
             if text:
                 self.trigger_voice_command(text, source="MIC-STT")
             else:
-                self.nav_status = "Khong nghe ro cau lenh. Vui long thu lai hoac click nut cau lenh."
-                self.add_log("[MIC] Khong nhan dang duoc van ban tu am thanh.")
+                self.nav_status = f"Da thu am (Peak: {peak:.0f}%), chua nghe ro cau lenh. Hay noi to ro hon!"
+                self.add_log(f"[MIC] Am thanh Peak={peak:.0f}% nhung chua nhan dang ro cau tieng Viet.")
 
         threading.Thread(target=_worker, daemon=True).start()
 
@@ -241,7 +249,7 @@ class VoiceControlGUI:
                         "extracted_regions": [],
                         "planned_waypoints": [],
                         "unknown_regions": [],
-                        "message": "Đã hủy lộ trình hiện tại. Robot dừng an toàn.",
+                        "message": "Da huy lo trinh hien tai. Robot dung an toan.",
                     }
                     self.nav_status = "STOPPED - Da huy hanh trinh hien tai"
                     self.add_log("[STOP] Nguoi dung nhan nut DUNG / XOA LO TRINH")
@@ -261,11 +269,6 @@ class VoiceControlGUI:
 
 def generate_gui_preview_png(output_path: str) -> None:
     """Xuất ảnh chụp giao diện điều khiển giọng nói (Voice Control GUI) phục vụ Báo cáo & README."""
-    pkg_root = resolve_pkg_root()
-    seg_png = os.path.join(pkg_root, "maps", "map_segmented.png")
-    route_png = os.path.join(pkg_root, "results", "voice_route_demo.png")
-    map_img_To_use = route_png if os.path.isfile(route_png) else seg_png
-
     w, h = 1280, 820
     canvas = bytearray([22, 27, 38] * (w * h))
 
@@ -363,10 +366,10 @@ class VoiceControlGUINode(Node):
         if text and text != self.gui.last_voice_text:
             self.gui.last_voice_text = text
             self.gui.parsed_info = self.gui.parser.parse(text, self.gui.robot_xy)
-            self.gui.add_log(f"[TOPIC] Nhan lenh: \"{text}\"")
+            self.gui.add_log(f"[TOPIC] Nhan lenh: \"{strip_accents(text)}\"")
 
     def _on_nav_status(self, msg: String) -> None:
-        self.gui.nav_status = msg.data
+        self.gui.nav_status = strip_accents(msg.data)
 
     def _on_amcl(self, msg: PoseWithCovarianceStamped) -> None:
         pos = msg.pose.pose.position
@@ -479,7 +482,7 @@ def run_opencv_gui(gui: VoiceControlGUI) -> None:
         box_border = (100, 240, 255) if gui.typing_active else (160, 120, 90)
         cv2.rectangle(frame, (rx, 210), (rx + 595, 258), (24, 18, 15), -1)
         cv2.rectangle(frame, (rx, 210), (rx + 595, 258), box_border, 2)
-        disp_input = gui.typing_buffer if (gui.typing_buffer or gui.typing_active) else "Click vao day de go cau lenh tuy y..."
+        disp_input = strip_accents(gui.typing_buffer) if (gui.typing_buffer or gui.typing_active) else "Click vao day de go cau lenh tuy y..."
         if gui.typing_active:
             disp_input += "|"
         cv2.putText(frame, disp_input[:52], (rx + 12, 240), cv2.FONT_HERSHEY_SIMPLEX, 0.56, (235, 235, 235), 1, cv2.LINE_AA)
@@ -504,7 +507,7 @@ def run_opencv_gui(gui: VoiceControlGUI) -> None:
             cv2.rectangle(frame, (rx, by0), (rx + rw, by0 + btn_h), (210, 175, 140), 1)
             cv2.putText(frame, label, (rx + 16, by0 + 29), cv2.FONT_HERSHEY_SIMPLEX, 0.56, (255, 255, 255), 2, cv2.LINE_AA)
 
-        # Khung hiển thị trạng thái NLU & Lịch sử
+        # Khung hiển thị trạng thái NLU & Lịch sử (Chuẩn hóa ASCII tránh lỗi hiển thị ??)
         is_valid = gui.parsed_info.get("valid", True)
         status_border = (110, 215, 95) if is_valid else (80, 80, 245)
         cv2.rectangle(frame, (rx, 635), (rx + rw, 800), (24, 18, 15), -1)
@@ -512,13 +515,14 @@ def run_opencv_gui(gui: VoiceControlGUI) -> None:
 
         route_list = gui.parsed_info.get("planned_waypoints", [])
         route_txt = " -> ".join(route_list) if route_list else ("INVALID REGION (TU CHOI LENH)" if not is_valid else "NONE")
-        cv2.putText(frame, f"LENH CUOI: {gui.last_voice_text}", (rx + 14, 660),
+        ascii_last_cmd = strip_accents(gui.last_voice_text)
+        cv2.putText(frame, f"LENH CUOI: {ascii_last_cmd}", (rx + 14, 660),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.54, (255, 255, 255), 1, cv2.LINE_AA)
         cv2.putText(frame, f"LO TRINH NLU: {route_txt}  |  ROBOT: ({gui.robot_xy[0]:.1f}m, {gui.robot_xy[1]:.1f}m)",
                     (rx + 14, 684), cv2.FONT_HERSHEY_SIMPLEX, 0.54, (90, 225, 255) if is_valid else (110, 110, 255), 2, cv2.LINE_AA)
 
         for i, log_line in enumerate(gui.history_log[-4:]):
-            cv2.putText(frame, log_line[:82], (rx + 14, 712 + i * 21),
+            cv2.putText(frame, strip_accents(log_line)[:82], (rx + 14, 712 + i * 21),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.44, (195, 205, 215), 1, cv2.LINE_AA)
 
         cv2.imshow(win_name, frame)
